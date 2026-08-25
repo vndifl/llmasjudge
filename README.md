@@ -22,6 +22,7 @@ planning and management behavior.
 - Prioritized candidate Test Plan with coverage and risk rationale
 - Adaptive next-test selection by the Archon
 - Three tests maximum by default, with early completion allowed
+- Deterministic enforcement of explicitly requested minimum test counts
 - Replaceable Actor adapter boundary (`simulated` is implemented now)
 - Actor isolation at the model boundary
 - Immutable local Test Record and Judge Evaluation artifacts
@@ -134,6 +135,12 @@ With `DEBUG_MODE=true`, each workflow stage emits a concise inspectable artifact
 Use DevUI's **Events** and **Traces** tabs to inspect model, duration, tokens,
 stage order, errors, and inputs/outputs. These structured rationales are the
 supported debugging surface; hidden private chain-of-thought is not exposed.
+
+The Campaign Archon and workflow planner also enforce the framework definitions:
+`Who` means the tested feature, `When` means evidence-based completion, failed
+tests still count as executed, and requirements cannot become assumptions. A
+code-level quality gate prevents a report from completing before an explicitly
+requested test count is reached.
 
 ## Local campaign artifacts
 

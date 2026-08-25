@@ -60,9 +60,18 @@ campaign_archon = Agent(
     description="Discuss and refine a Lite Test Campaign before execution.",
     instructions="""
 You are the conversational Archon (Test Director). Help the user create a Lite
-Test Campaign. Gather or responsibly infer the Campaign 5W1H: Who, What, Where,
-When, Why, and How. Build a rubric with observable criteria, severity, expected
-behavior, prohibited behavior, and evidence required.
+Test Campaign using these framework-specific definitions:
+- Who: the agent or feature being tested, never the Actor.
+- What: what the tested feature does and what behavior is in scope.
+- Where: the target interface, endpoint, application, or environment.
+- When: the evidence, limits, or conditions that end testing; not the time at
+  which a customer uses the feature.
+- Why: the risk, change, issue, or reason testing is needed.
+- How: how the user/Actor interacts with the tested feature.
+
+Build a numbered rubric (never a Markdown table). Every criterion must contain
+an ID, scenario, observable behavior, severity, expected behavior, prohibited
+behavior, and evidence required. Use objective and observable language.
 
 Lite defaults: at most 3 executed tests, one Actor attempt per test, at most 3
 simulated interaction turns, sequential execution, and early completion when
@@ -73,6 +82,16 @@ When the user approves or asks to proceed, return a self-contained block headed
 APPROVED LITE CAMPAIGN. Include 5W1H, rubric, limits, stopping criteria, target
 interface, assumptions, and known constraints. The user will paste that block
 into the Lite Testing Campaign workflow.
+
+Before returning the approved block, silently quality-check and correct it:
+- Completion depends on judgeable evidence and coverage, never PASS outcomes.
+- FAIL and INCONCLUSIVE records still count as executed tests.
+- Requirements and expected behaviors must not be restated as assumptions.
+- Stopping criteria must not contradict limits or require expected outcomes.
+- Do not presume the feature behaves correctly or explains itself clearly.
+- Do not use subjective terms such as "without hesitation" unless measured.
+- A requested number of scenarios means that many records are required unless
+  a safety or technical blocker is explicitly documented.
 """.strip(),
 )
 
@@ -85,6 +104,16 @@ You are the Archon managing a Lite Test Campaign. Normalize the supplied
 campaign, preserve explicit user requirements, create an observable rubric,
 and produce a prioritized candidate Test Plan. Then select the highest-value
 first test. Do not execute or grade it.
+
+Apply these non-negotiable framework rules even if the supplied draft is weak:
+- Who is the tested feature; When is the evidence-based completion condition.
+- Completion never requires PASS results or behavior matching expectations.
+- FAIL and INCONCLUSIVE results count toward execution and coverage.
+- Requirements are not assumptions.
+- Rubric criteria are numbered, objective, observable, and evidence-based.
+- Never presume the target is correct or communicates clearly.
+- Preserve all explicitly required scenarios and test counts.
+- Disclose repaired contradictions as campaign normalization notes.
 
 Return these exact sections:
 CAMPAIGN SPECIFICATION
@@ -119,6 +148,12 @@ END RELEVANT GRADING CONTEXT
 ACTOR TASK BRIEF:
 (goal, user persona, target description, starting state, execution limit, and evidence to capture; do not reveal expected behavior or rubric)
 END ACTOR TASK BRIEF
+
+Campaign completion is based on executed coverage and judgeable evidence, not
+PASS verdicts. A FAIL or INCONCLUSIVE record still counts as executed. Do not
+declare COMPLETE while an explicitly required scenario remains unexecuted.
+Do not repeat a completed scenario unless investigating consistency or missing
+evidence, and explain any such repetition.
 """.strip(),
 )
 
@@ -195,6 +230,12 @@ END RELEVANT GRADING CONTEXT
 ACTOR TASK BRIEF:
 (goal, persona, target, starting state, limits, and evidence to capture; no rubric or expected result)
 END ACTOR TASK BRIEF
+
+Campaign completion is based on executed coverage and judgeable evidence, not
+PASS verdicts. A FAIL or INCONCLUSIVE record still counts as executed. Do not
+declare COMPLETE while an explicitly required scenario remains unexecuted.
+Do not repeat a completed scenario unless investigating consistency or missing
+evidence, and explain any such repetition.
 """.strip(),
 )
 
@@ -225,6 +266,21 @@ def _section(text: str, heading: str) -> str:
     pattern = rf"{re.escape(heading)}:\s*(.*?)\s*END {re.escape(heading)}"
     match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
     return match.group(1).strip() if match else ""
+
+
+def _requested_test_count(text: str, maximum: int) -> int:
+    """Extract an explicit test count for a deterministic completion guard."""
+
+    patterns = (
+        r"(?:number of tests|tests? required)\s*:\s*(\d+)",
+        r"execute no more than\s+(\d+)\s+tests?",
+        r"(?:all|each of the)\s+(\d+)\s+(?:planned\s+)?(?:tests|scenarios|boundary conditions)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return max(1, min(int(match.group(1)), maximum))
+    return 1
 
 
 def _run_dir(campaign_id: str) -> Path:
@@ -262,12 +318,15 @@ class CampaignIntakeExecutor(Executor):
         grading = _section(plan, "RELEVANT GRADING CONTEXT")
         if not task:
             raise ValueError("The Archon did not return an ACTOR TASK BRIEF section.")
+        maximum = max(1, int(os.getenv("LITE_MAX_TESTS", "3")))
+        minimum = _requested_test_count(request, maximum)
         state: dict[str, Any] = {
             "schema_version": "0.2",
             "campaign_id": campaign_id,
             "mode": "lite",
             "created_at": _utc_now(),
-            "max_tests": max(1, int(os.getenv("LITE_MAX_TESTS", "3"))),
+            "max_tests": maximum,
+            "min_tests": minimum,
             "original_request": request,
             "campaign_plan": plan,
             "current_task": task,
@@ -370,20 +429,32 @@ class ArchonReviewExecutor(Executor):
             re.search(r"CAMPAIGN_STATUS:\s*COMPLETE", response.text, flags=re.IGNORECASE)
         )
         limit_complete = state["test_count"] >= state["max_tests"]
-        state["complete"] = model_complete or limit_complete
+        minimum_complete = state["test_count"] >= state["min_tests"]
+        state["complete"] = limit_complete or (model_complete and minimum_complete)
+        if model_complete and not minimum_complete:
+            response_text = (
+                response.text
+                + "\n\nSYSTEM QUALITY GATE: COMPLETE was rejected because the Campaign "
+                + f"requires at least {state['min_tests']} Test Records."
+            )
+        else:
+            response_text = response.text
         if not state["complete"]:
             task = _section(response.text, "ACTOR TASK BRIEF")
             grading = _section(response.text, "RELEVANT GRADING CONTEXT")
             if not task:
-                # A malformed continuation safely ends the campaign instead of leaking context.
+                if state["test_count"] < state["min_tests"]:
+                    raise RuntimeError(
+                        "Archon tried to finish before the required test count and did not "
+                        "provide an isolated next task. The campaign was stopped rather than "
+                        "incorrectly marked complete."
+                    )
+                # A malformed optional continuation ends safely instead of leaking context.
                 state["complete"] = True
-                response_text = response.text + "\n\nSYSTEM NOTE: Campaign ended because no isolated next task was returned."
+                response_text += "\n\nSYSTEM NOTE: Campaign ended because no isolated next task was returned."
             else:
                 state["current_task"] = task
                 state["grading_context"] = grading
-                response_text = response.text
-        else:
-            response_text = response.text
         _write_once(
             _run_dir(state["campaign_id"]) / f"decision-{state['test_count']:02d}.json",
             decision,
@@ -405,6 +476,7 @@ class CompletedReportExecutor(Executor):
             f"- Campaign ID: `{state['campaign_id']}`",
             f"- Mode: Lite",
             f"- Tests completed: {state['test_count']} of {state['max_tests']} maximum",
+            f"- Minimum required records: {state['min_tests']}",
             f"- Started: {state['created_at']}",
             f"- Completed: {_utc_now()}",
             "- Actor adapter: Simulated",
