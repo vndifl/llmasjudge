@@ -1,4 +1,4 @@
-agent-framework>=1.0.0
-agent-framework-openai>=1.0.0
-agent-framework-devui>=1.0.0b260821
-python-dotenv>=1.0.0
+agent-framework-core>=1.15.0,<2
+agent-framework-openai>=1.14.0,<2
+agent-framework-devui>=1.0.0b260821,<2
+python-dotenv>=1.0.0,<2

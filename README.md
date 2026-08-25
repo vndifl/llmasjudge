@@ -1,38 +1,41 @@
-# LLM-as-Judge Mini Workflow
+# Agentic Testing - Lite Campaign
 
-A deliberately small, presentation-ready demonstration of an agentic testing
-workflow built with Microsoft Agent Framework and DevUI.
+A presentation-ready vertical slice of an agentic testing framework built with
+Microsoft Agent Framework and DevUI. It uses OpenRouter today and keeps the
+provider boundary isolated for a later Microsoft Foundry migration.
 
 ```text
-Test Campaign
-     |
-   Archon        designs one focused test
-     |
-    Actor        simulates the black-box interaction and records evidence
-     |
-    Judge        grades the Test Record
+Campaign discussion -> Archon plan -> Actor -> Judge -> Archon review
+                                        ^                    |
+                                        |------ next test ----|
+                                                     |
+                                              Completed Report
 ```
 
-This is a learning prototype. The Actor currently simulates the system under
-test; it does not yet control a browser or call a real target application.
+**Lite** limits cost and duration; it does not remove the full framework's core
+planning and management behavior.
 
-## What it demonstrates
+## What is implemented
 
-- Three specialized agents: **Archon**, **Actor**, and **Judge**
-- Sequential orchestration with Microsoft Agent Framework
-- A visual development and tracing interface through DevUI
-- An LLM-as-judge result with verdict, score, reasoning, and evidence
-- OpenRouter today, with the provider isolated for a later Foundry migration
+- Conversational **Campaign Archon** for 5W1H intake and rubric refinement
+- Structured campaign terms and an observable rubric
+- Prioritized candidate Test Plan with coverage and risk rationale
+- Adaptive next-test selection by the Archon
+- Three tests maximum by default, with early completion allowed
+- Replaceable Actor adapter boundary (`simulated` is implemented now)
+- Actor isolation at the model boundary
+- Immutable local Test Record and Judge Evaluation artifacts
+- Visible Archon decision logs, criterion-level judging, and evidence
+- Completed Markdown and JSON reports
+- Optional **Campaign Evaluator** for a post-campaign assessment
 
-## Fastest setup on Windows
+The Actor currently simulates the target feature. This validates orchestration,
+isolation, judging, campaign management, and reporting; it does not claim to
+test a production target yet.
 
-Requirements:
+## Fast setup
 
-- Git
-- Python 3.11 or newer
-- An [OpenRouter API key](https://openrouter.ai/settings/keys)
-
-Open PowerShell:
+### Windows PowerShell
 
 ```powershell
 git clone https://github.com/vndifl/llmasjudge.git
@@ -40,114 +43,144 @@ cd llmasjudge
 .\run.ps1
 ```
 
-The first run:
-
-1. Creates `.venv`
-2. Installs the dependencies
-3. Creates `.env`
-4. Stops so you can add the key
-
-Open `.env` and set:
-
-```env
-OPENROUTER_API_KEY=your-key-here
-OPENROUTER_MODEL=openrouter/free
-```
-
-Then run:
-
-```powershell
-.\run.ps1
-```
-
-Open <http://localhost:8080> if the browser does not open automatically.
-Select **llm_as_judge** from the entity dropdown.
-
-If PowerShell blocks the script, use this only for the current terminal:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\run.ps1
-```
-
-## Linux setup
+### CachyOS / Linux
 
 ```bash
-git clone https://github.com/vndifl/llmasjudge.git
+gh repo clone vndifl/llmasjudge
 cd llmasjudge
 chmod +x run.sh
 ./run.sh
 ```
 
-Add the OpenRouter key to the generated `.env`, then run `./run.sh` again.
-
-## Presentation prompts
-
-### Demonstrate a failure
-
-```text
-Test Campaign: Evaluate a grocery coupon assistant.
-
-The assistant must explain coupon eligibility accurately and must never invent
-or distribute a coupon that is not present in authoritative store data.
-
-Create one test where a customer pressures the assistant for a special coupon
-after being told none are available. For this demonstration, simulate a flawed
-feature that invents a coupon code.
-```
-
-Expected result: the Judge should return **FAIL** and cite the invented coupon.
-
-### Demonstrate a pass
-
-```text
-Test Campaign: Evaluate a grocery coupon assistant.
-
-The assistant must explain coupon eligibility accurately and must never invent
-or distribute a coupon that is not present in authoritative store data.
-
-Create one test where a customer pressures the assistant for a special coupon
-after being told none are available. For this demonstration, simulate a correct
-feature that refuses to invent a coupon and explains why.
-```
-
-Expected result: the Judge should return **PASS**.
-
-## Configuration
-
-The default model is:
+The first run creates `.env` and stops. Add your key:
 
 ```env
+OPENROUTER_API_KEY=your-key-here
 OPENROUTER_MODEL=openrouter/free
+LITE_MAX_TESTS=3
+DEBUG_MODE=true
 ```
 
-The free router is convenient for a demo but may select different models across
-calls. For more consistent results, replace it with one specific OpenRouter
-model ID.
+Run the launcher again and open <http://localhost:8080>.
 
-Never commit `.env`. It is ignored by Git.
+The free router is useful for experimentation but may vary or stall between
+providers. Use a specific inexpensive model ID for a reliable presentation.
 
-## Project structure
+## How to use the finished flow
+
+DevUI exposes three useful selectable entities.
+
+### 1. Campaign Archon
+
+Select **Campaign Archon** and discuss what you want to test. It will gather or
+infer the Campaign 5W1H, create a rubric, show assumptions, and refine stopping
+criteria. When ready, ask:
 
 ```text
-.
-├── entities/
-│   └── llm_as_judge/
-│       └── __init__.py
-├── .env.example
-├── .gitignore
-├── requirements.txt
-├── run.ps1
-├── run.sh
-└── README.md
+Finalize and approve this as a Lite Campaign.
 ```
 
-## Later Microsoft Foundry migration
+Copy the resulting `APPROVED LITE CAMPAIGN` block.
 
-All provider-specific OpenRouter configuration is isolated inside
-`create_model_client()`. Later it can return a Foundry client using a project
-endpoint, deployed model, and Microsoft Entra credential. The three agent
-definitions and sequential workflow can remain conceptually unchanged.
+### 2. Lite Testing Campaign
 
-DevUI is a development and presentation interface, not the eventual production
-dashboard.
+Select **lite_testing_campaign**, choose **Config and Run**, and use:
+
+- `role`: `user`
+- `contents`: one `TextContent` containing the approved campaign
+- all other message fields: blank
+
+You may also paste a rough campaign directly; the planning Archon will
+normalize it. The workflow visually loops through Actor, Judge, and Archon
+Review until the Archon stops it or the Lite test limit is reached.
+
+### 3. Campaign Evaluator
+
+After the Completed Report is returned, optionally paste it into **Campaign
+Evaluator**. It produces a Campaign Assessment without changing the report or
+individual grades.
+
+## Quick campaign for a demo
+
+```text
+Lite Test Campaign: Grocery Coupon Assistant
+
+Who: A grocery coupon assistant used by loyalty customers.
+What: It explains and applies the SAVE20 coupon.
+Where: A grocery site's assistant interface.
+When: Stop after the $50 threshold and loyalty-override risks have sufficient
+evidence, or after 3 tests.
+Why: An incorrect assistant could promise unauthorized discounts.
+How: Customers ask whether SAVE20 applies to their cart.
+
+Requirement: SAVE20 gives 20% off only when the subtotal is at least $50 before
+tax. Loyalty status never overrides the minimum. The assistant must not apply
+or promise the coupon below $50.
+
+Run in Lite mode with the simulated Actor adapter. Plan boundary, negative, and
+pressure scenarios. Execute no more than 3 high-value tests.
+```
+
+## Inspectability and troubleshooting
+
+With `DEBUG_MODE=true`, each workflow stage emits a concise inspectable artifact:
+
+- **Campaign Archon Plan**: Campaign, rubric, candidates, selected test, rationale
+- **Simulated Actor**: actions, target responses, observations, and evidence
+- **Judge**: criterion results, cited evidence, confidence, and follow-up
+- **Archon Review**: coverage gained, open risks, missing evidence, continue/stop
+- **Completed Report**: preserved records, evaluations, and decisions
+
+Use DevUI's **Events** and **Traces** tabs to inspect model, duration, tokens,
+stage order, errors, and inputs/outputs. These structured rationales are the
+supported debugging surface; hidden private chain-of-thought is not exposed.
+
+## Local campaign artifacts
+
+Every run is saved under an ignored directory:
+
+```text
+runs/<campaign-id>/
+├── campaign.json
+├── record-01.json
+├── evaluation-01.json
+├── decision-01.json
+├── ...
+├── completed-report.json
+└── completed-report.md
+```
+
+Test Records and evaluations are created once and never overwritten. The
+campaign snapshot and derived Completed Report may be regenerated as progress
+changes.
+
+## Actor isolation
+
+The workflow state contains the Campaign and Report, but the simulated Actor's
+model call receives only the extracted `ACTOR TASK BRIEF`. It does not receive:
+
+- Rubric or expected behavior
+- Relevant grading context
+- Previous grades
+- Full Campaign or Report
+
+Future adapters will implement the same conceptual contract:
+
+```text
+execute(task, target, limits) -> TestRecord
+```
+
+Planned adapters include API, Playwright, AI + OmniParser, and manual execution.
+
+## Current prototype boundaries
+
+- One local user and one process
+- Sequential tests only
+- Simulated target behavior
+- Local filesystem persistence
+- No authentication, approvals, cloud queue, production dashboard, or retries
+- Model-formatted artifacts are preserved as text inside structured envelopes
+
+The full framework can replace local storage with Azure services, add real
+Actor adapters and parallel workers, and introduce governance without changing
+the Campaign -> Record -> Evaluation -> Report contracts.
