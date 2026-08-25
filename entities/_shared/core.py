@@ -29,7 +29,7 @@ from agent_framework import (
 from agent_framework.openai import OpenAIChatCompletionClient
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RUNS_ROOT = PROJECT_ROOT / "runs"
 load_dotenv(PROJECT_ROOT / ".env")
 DEBUG_MODE = os.getenv("DEBUG_MODE", "true").lower() in {"1", "true", "yes", "on"}
