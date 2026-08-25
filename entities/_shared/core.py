@@ -271,13 +271,23 @@ def _section(text: str, heading: str) -> str:
 def _requested_test_count(text: str, maximum: int) -> int:
     """Extract an explicit test count for a deterministic completion guard."""
 
+    normalized = text
+    for word, digit in {
+        "one": "1",
+        "two": "2",
+        "three": "3",
+        "four": "4",
+        "five": "5",
+    }.items():
+        normalized = re.sub(rf"\b{word}\b", digit, normalized, flags=re.IGNORECASE)
     patterns = (
         r"(?:number of tests|tests? required)\s*:\s*(\d+)",
         r"execute no more than\s+(\d+)\s+tests?",
         r"(?:all|each of the)\s+(\d+)\s+(?:planned\s+)?(?:tests|scenarios|boundary conditions)",
+        r"only\s+(\d+)\s+(?:tests|test scenarios|scenarios)",
     )
     for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
+        match = re.search(pattern, normalized, flags=re.IGNORECASE)
         if match:
             return max(1, min(int(match.group(1)), maximum))
     return 1
