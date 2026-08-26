@@ -5,11 +5,10 @@ Microsoft Agent Framework and DevUI. It uses OpenRouter today and keeps the
 provider boundary isolated for a later Microsoft Foundry migration.
 
 ```text
-Campaign discussion -> Archon plan -> Actor -> Judge -> Archon review
-                                        ^                    |
-                                        |------ next test ----|
-                                                     |
-                                              Completed Report
+Campaign Compiler -> Task Validator -> Actor -> Record Validator -> Judge
+       Report <- Completion Gate <- Coverage Ledger <- Evaluation Validator
+                         |
+                    Archon Review -> next validated task
 ```
 
 **Lite** limits cost and duration; it does not remove the full framework's core
@@ -18,11 +17,12 @@ planning and management behavior.
 ## What is implemented
 
 - Conversational **Campaign Archon** for 5W1H intake and rubric refinement
-- Structured campaign terms and an observable rubric
+- Typed Campaign, Test Task, Test Record, Judge Evaluation, and coverage contracts
 - Prioritized candidate Test Plan with coverage and risk rationale
 - Adaptive next-test selection by the Archon
 - Three tests maximum by default, with early completion allowed
-- Deterministic enforcement of explicitly requested minimum test counts
+- Deterministic scenario ledger and system-owned completion decision
+- One repair attempt for malformed model JSON; rejected records consume no test slot
 - Replaceable Actor adapter boundary (`simulated` is implemented now)
 - Actor isolation at the model boundary
 - Immutable local Test Record and Judge Evaluation artifacts
@@ -92,8 +92,9 @@ Select **lite_testing_campaign**, choose **Config and Run**, and use:
 - all other message fields: blank
 
 You may also paste a rough campaign directly; the planning Archon will
-normalize it. The workflow visually loops through Actor, Judge, and Archon
-Review until the Archon stops it or the Lite test limit is reached.
+normalize it. The workflow visibly validates every task, record, and evaluation.
+The Archon recommends the next action, but the system coverage gate—not the
+model—decides whether the campaign is complete.
 
 ### 3. Campaign Evaluator
 
@@ -126,10 +127,13 @@ pressure scenarios. Execute no more than 3 high-value tests.
 
 With `DEBUG_MODE=true`, each workflow stage emits a concise inspectable artifact:
 
-- **Campaign Archon Plan**: Campaign, rubric, candidates, selected test, rationale
-- **Simulated Actor**: actions, target responses, observations, and evidence
-- **Judge**: criterion results, cited evidence, confidence, and follow-up
-- **Archon Review**: coverage gained, open risks, missing evidence, continue/stop
+- **Campaign Compiler**: canonical Campaign, rubric, scenarios, and first task
+- **Task Validator**: accepted scenario and Actor-safe task view
+- **Record Validator**: rejects placeholders and missing feature responses
+- **Evaluation Validator**: verifies criterion IDs and transcript citations
+- **Coverage Ledger**: scenario-level OPEN, COVERED, FAILED, or UNRESOLVED status
+- **System Completion Gate**: authoritative continue/complete decision
+- **Archon Review**: advisory rationale and next-task proposal
 - **Completed Report**: preserved records, evaluations, and decisions
 
 Use DevUI's **Events** and **Traces** tabs to inspect model, duration, tokens,
@@ -139,8 +143,8 @@ supported debugging surface; hidden private chain-of-thought is not exposed.
 The Campaign Archon and workflow planner also enforce the framework definitions:
 `Who` means the tested feature, `When` means evidence-based completion, failed
 tests still count as executed, and requirements cannot become assumptions. A
-code-level quality gate prevents a report from completing before an explicitly
-requested test count is reached.
+code-level quality gate prevents a report from completing while explicitly
+required scenarios remain unexecuted unless the Lite limit or a blocker is reached.
 
 ## Local campaign artifacts
 
@@ -185,8 +189,8 @@ Planned adapters include API, Playwright, AI + OmniParser, and manual execution.
 - Sequential tests only
 - Simulated target behavior
 - Local filesystem persistence
-- No authentication, approvals, cloud queue, production dashboard, or retries
-- Model-formatted artifacts are preserved as text inside structured envelopes
+- No authentication, approvals, cloud queue, or production dashboard
+- One schema-repair retry per model artifact; no provider-level retry policy yet
 
 The full framework can replace local storage with Azure services, add real
 Actor adapters and parallel workers, and introduce governance without changing
