@@ -1,5 +1,4 @@
 """Validated Lite Campaign workflow for Agent Framework DevUI."""
-from __future__ import annotations
 
 import json
 import os
@@ -119,9 +118,10 @@ class ConversationalArchon(Executor):
             raise ValueError("Campaign input is empty")
         await self.continue_conversation("", user_message, ctx)
 
-    @response_handler(request=ArchonInputRequest, response=ArchonInputResponse,
-                      output=list[Message], workflow_output=str)
-    async def resume(self, original_request, response, ctx):
+    @response_handler
+    async def resume(self, original_request: ArchonInputRequest,
+                     response: ArchonInputResponse,
+                     ctx: WorkflowContext[list[Message], str]):
         await self.continue_conversation(original_request.conversation, response.message, ctx)
 
 
