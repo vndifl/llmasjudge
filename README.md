@@ -5,7 +5,7 @@ Microsoft Agent Framework and DevUI. It uses OpenRouter today and keeps the
 provider boundary isolated for a later Microsoft Foundry migration.
 
 ```text
-Campaign Compiler -> Task Validator -> Actor -> Record Validator -> Judge
+Campaign Archon (chat/approve) -> Campaign Compiler -> Task Validator -> Actor -> Record Validator -> Judge
        Report <- Completion Gate <- Coverage Ledger <- Evaluation Validator
                          |
                     Archon Review -> next validated task
@@ -69,34 +69,32 @@ providers. Use a specific inexpensive model ID for a reliable presentation.
 
 ## How to use the finished flow
 
-DevUI exposes three useful selectable entities.
+DevUI exposes one integrated Campaign workflow plus an optional evaluator.
 
-### 1. Campaign Archon
+### 1. Campaign Archon + Testing
 
-Select **Campaign Archon** and discuss what you want to test. It will gather or
-infer the Campaign 5W1H, create a rubric, show assumptions, and refine stopping
-criteria. When ready, ask:
+Select **campaign_archon_testing**, choose **Config and Run**, and enter your
+initial Campaign idea. The first visual node is the Campaign Archon. It will
+gather or infer the 5W1H, create a rubric, show assumptions, and then pause for
+your response inside the same workflow.
+
+Continue replying in the displayed `message` field. When the Campaign looks
+right, say:
 
 ```text
-Finalize and approve this as a Lite Campaign.
+Run it.
 ```
 
-Copy the resulting `APPROVED LITE CAMPAIGN` block.
+The Archon creates the approved Campaign and automatically passes it into the
+testing stages. There is nothing to copy and no second entity to launch. You
+may also paste an existing `APPROVED LITE CAMPAIGN` as the first message to
+skip discussion and begin execution immediately.
 
-### 2. Lite Testing Campaign
-
-Select **lite_testing_campaign**, choose **Config and Run**, and use:
-
-- `role`: `user`
-- `contents`: one `TextContent` containing the approved campaign
-- all other message fields: blank
-
-You may also paste a rough campaign directly; the planning Archon will
-normalize it. The workflow visibly validates every task, record, and evaluation.
+The workflow visibly validates every task, record, and evaluation.
 The Archon recommends the next action, but the system coverage gate—not the
 model—decides whether the campaign is complete.
 
-### 3. Campaign Evaluator
+### 2. Campaign Evaluator
 
 After the Completed Report is returned, optionally paste it into **Campaign
 Evaluator**. It produces a Campaign Assessment without changing the report or

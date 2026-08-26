@@ -193,3 +193,15 @@ class ArchonReview(StrictModel):
     rationale: str
     next_task: TestTask | None = None
 
+
+class ArchonInputRequest(StrictModel):
+    """Information DevUI displays while the workflow waits for the user."""
+
+    archon_message: str = Field(description="The Archon's latest response")
+    conversation: str = Field(description="Conversation retained for the next turn")
+
+
+class ArchonInputResponse(StrictModel):
+    """The single field the user fills in to continue Campaign intake."""
+
+    message: str = Field(min_length=1, description="Reply to the Archon, or say 'run it' to begin testing")

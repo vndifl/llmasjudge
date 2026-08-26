@@ -6,12 +6,15 @@ import os
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from agent_framework import Case, Default, Executor, Message, WorkflowBuilder, WorkflowContext, handler
+from agent_framework import (Case, Default, Executor, Message, WorkflowBuilder,
+                             WorkflowContext, handler, response_handler)
 
 from .agents import actor_agent, judge_agent, planning_agent, review_agent
 from .json_support import parse_model, validation_message
-from .models import (ArchonReview, CampaignPlan, CampaignSpec, CampaignStatus, JudgeEvaluation,
-                     ScenarioCoverage, TestRecord, TestTask, Verdict)
+from .models import (ArchonInputRequest, ArchonInputResponse, ArchonReview, CampaignPlan,
+                     CampaignSpec, CampaignStatus, JudgeEvaluation, ScenarioCoverage,
+                     TestRecord, TestTask, Verdict)
+from .agents import campaign_archon
 from .storage import write_once, write_snapshot, write_text
 from .validators import (apply_coverage, canonicalize_evaluation, fallback_task,
                          first_open_scenario, new_coverage, validate_plan,
@@ -60,6 +63,66 @@ async def model_json(agent, prompt: str, model_type, validator=None):
         if validator:
             validator(value)
         return value, True
+
+
+def approved_to_run(text: str) -> bool:
+    """Recognize explicit execution authorization without treating discussion as approval."""
+    normalized = " ".join(text.lower().strip().split())
+    if "approved lite campaign" in normalized:
+        return True
+    commands = (
+        r"^(?:yes[, ]+)?(?:run|start|execute)(?: it| the tests?| the campaign)?[.!]?$",
+        r"^(?:yes[, ]+)?(?:go|move) forward(?: with (?:it|the tests?|the campaign))?[.!]?$",
+        r"^(?:yes[, ]+)?proceed(?: with (?:it|the tests?|the campaign))?[.!]?$",
+        r"^(?:i )?approve(?: it| the campaign)?[.!]?$",
+    )
+    import re
+    return any(re.fullmatch(pattern, normalized) for pattern in commands)
+
+
+class ConversationalArchon(Executor):
+    """Discuss the Campaign, pause for replies, then hand it directly to execution."""
+    def __init__(self): super().__init__(id="00-Campaign-Archon")
+
+    async def continue_conversation(self, conversation: str, user_message: str,
+                                    ctx: WorkflowContext[list[Message], str]):
+        updated = f"{conversation}\n\nUSER:\n{user_message}".strip()
+        direct_campaign = "approved lite campaign" in user_message.lower()
+        if direct_campaign:
+            await ctx.yield_output("# Campaign Approved\n\nStarting the validated Lite Campaign automatically.")
+            await ctx.send_message([Message("user", [user_message])])
+            return
+        prompt = (
+            "Continue this Campaign-design conversation. Respond to the latest USER message. "
+            "If the latest message explicitly authorizes execution (for example run it, proceed, "
+            "or start the tests), return a complete self-contained block headed APPROVED LITE CAMPAIGN.\n\n"
+            f"CONVERSATION:\n{updated}"
+        )
+        response = await campaign_archon.run(prompt)
+        archon_text = response.text
+        updated = f"{updated}\n\nARCHON:\n{archon_text}"
+        await ctx.yield_output(f"# Archon\n\n{archon_text}")
+        if approved_to_run(user_message):
+            submission = archon_text if "approved lite campaign" in archon_text.lower() else updated
+            await ctx.yield_output("# Campaign Approved\n\nHanding the Campaign directly to the compiler.")
+            await ctx.send_message([Message("user", [submission])])
+        else:
+            await ctx.request_info(
+                ArchonInputRequest(archon_message=archon_text, conversation=updated),
+                ArchonInputResponse,
+            )
+
+    @handler
+    async def begin(self, messages: list[Message], ctx: WorkflowContext[list[Message], str]):
+        user_message = "\n\n".join(message.text for message in messages if message.text).strip()
+        if not user_message:
+            raise ValueError("Campaign input is empty")
+        await self.continue_conversation("", user_message, ctx)
+
+    @response_handler(request=ArchonInputRequest, response=ArchonInputResponse,
+                      output=list[Message], workflow_output=str)
+    async def resume(self, original_request, response, ctx):
+        await self.continue_conversation(original_request.conversation, response.message, ctx)
 
 
 class Compiler(Executor):
@@ -335,15 +398,16 @@ class Report(Executor):
         await ctx.yield_output(report)
 
 
+conversational_archon = ConversationalArchon()
 compiler, task_validator, actor = Compiler(), TaskValidator(), Actor()
 record_validator, judge, evaluation_validator = RecordValidator(), Judge(), EvaluationValidator()
 ledger, gate, review, report = Ledger(), CompletionGate(), ArchonReviewExecutor(), Report()
 
-workflow = (WorkflowBuilder(start_executor=compiler, name="lite_testing_campaign",
-    description="Validated Lite Campaign with coverage ledger and canonical report.", max_iterations=40,
-    output_from=[report], intermediate_output_from=([compiler, task_validator, actor, record_validator,
+workflow = (WorkflowBuilder(start_executor=conversational_archon, name="campaign_archon_testing",
+    description="Chat with the Archon, approve, and automatically run a validated Lite Campaign.", max_iterations=50,
+    output_from=[report], intermediate_output_from=([conversational_archon, compiler, task_validator, actor, record_validator,
     judge, evaluation_validator, ledger, gate, review] if DEBUG_MODE else None))
-    .add_edge(compiler, task_validator).add_edge(task_validator, actor).add_edge(actor, record_validator)
+    .add_edge(conversational_archon, compiler).add_edge(compiler, task_validator).add_edge(task_validator, actor).add_edge(actor, record_validator)
     .add_switch_case_edge_group(record_validator, [Case(condition=lambda state: not state["complete"], target=judge), Default(target=report)])
     .add_edge(judge, evaluation_validator).add_edge(evaluation_validator, ledger).add_edge(ledger, gate)
     .add_switch_case_edge_group(gate, [Case(condition=lambda state: not state["complete"], target=review), Default(target=report)])
