@@ -5,7 +5,7 @@ Microsoft Agent Framework and DevUI. It uses OpenRouter today and keeps the
 provider boundary isolated for a later Microsoft Foundry migration.
 
 ```text
-Campaign Archon (chat/approve) -> Campaign Compiler -> Task Validator -> Actor -> Record Validator -> Judge
+Campaign Archon -> Campaign Gate -> Task Gate -> Actor -> Simulated Target -> Record Evidence Gate -> Judge
        Report <- Completion Gate <- Coverage Ledger <- Evaluation Validator
                          |
                     Archon Review -> next validated task
@@ -17,7 +17,8 @@ planning and management behavior.
 ## What is implemented
 
 - Conversational **Campaign Archon** for 5W1H intake and rubric refinement
-- Typed Campaign, Test Task, Test Record, Judge Evaluation, and coverage contracts
+- Strictly separated Actor and Simulated Target roles
+- Typed Campaign, Actor Plan, Test Record, Judge Evaluation, and coverage contracts
 - Prioritized candidate Test Plan with coverage and risk rationale
 - Adaptive next-test selection by the Archon
 - Three tests maximum by default, with early completion allowed
@@ -126,10 +127,12 @@ pressure scenarios. Execute no more than 3 high-value tests.
 With `DEBUG_MODE=true`, each workflow stage emits a concise inspectable artifact:
 
 - **Campaign Compiler**: canonical Campaign, rubric, scenarios, and first task
-- **Task Validator**: accepted scenario and Actor-safe task view
-- **Record Validator**: rejects placeholders and missing feature responses
-- **Evaluation Validator**: verifies criterion IDs and transcript citations
-- **Coverage Ledger**: scenario-level OPEN, COVERED, FAILED, or UNRESOLVED status
+- **Task Gate**: accepts customer-only actions and rejects expected feature behavior
+- **Actor**: produces only customer messages
+- **Simulated Target**: produces only feature responses without seeing the rubric
+- **Record Evidence Gate**: assembles the transcript and verifies roles, starting state, limits, and placeholders
+- **Evaluation Gate**: verifies criterion IDs, citations, feature evidence, and required literal values
+- **Coverage Ledger**: separately reports Execution, Evidence, and Verdict
 - **System Completion Gate**: authoritative continue/complete decision
 - **Archon Review**: advisory rationale and next-task proposal
 - **Completed Report**: preserved records, evaluations, and decisions
@@ -165,15 +168,16 @@ changes.
 
 ## Actor isolation
 
-The workflow state contains the Campaign and Report, but the simulated Actor's
-model call receives only the extracted `ACTOR TASK BRIEF`. It does not receive:
+The Actor receives only its customer goal, persona, structured starting state,
+customer actions, and interaction limit. It does not receive:
 
 - Rubric or expected behavior
 - Relevant grading context
 - Previous grades
 - Full Campaign or Report
 
-Future adapters will implement the same conceptual contract:
+The separate Simulated Target receives Actor messages and public feature context,
+but no rubric or expected behavior. Future adapters replace that target boundary:
 
 ```text
 execute(task, target, limits) -> TestRecord
